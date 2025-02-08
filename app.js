@@ -813,7 +813,7 @@ app.post('/api/v1/documentations/:projectId/test', verifyClerkToken, async (req,
 app.post('/api/v1/documentation/:docid/test', verifyClerkToken, async (req, res) => {
 
   const docId = req.params.docid;
-  const { project_id } = req.body;
+  const { project_id, userId } = req.body;
 
   // 2. Verify user authentication
   if (!req.user || !req.user.sub) {
@@ -828,7 +828,7 @@ app.post('/api/v1/documentation/:docid/test', verifyClerkToken, async (req, res)
   let { data: projectData, error: projectError } = await supabase
     .from('projects') // Assuming you have a table called 'projects'
     .select('project_id') // We only need the id to verify existence
-    .eq('project_id', projectId)
+    .eq('project_id', project_id)
     .eq('user_id', userId)
     .single(); // .single() will return one row, or null if not found
 
@@ -954,18 +954,47 @@ app.post('/api/v1/documentation/:docId/schema/test', verifyClerkToken, async (re
   res.json(data);
 });
 
-app.post('/api/v1/documentations/:docId/add/schema/test', async (req, res) => {
+// add openapi json data and raw JSON data to DB
+app.post('/api/v1/documentations/:docId/add/schema/test', verifyClerkToken, async (req, res) => {
   const docId = req.params.docId;
-  const apiData = req.body;
+  const { apiData, apiJson, project_id, userId } = req.body;
 
   console.log(apiData);
 
+  // 2. Verify user authentication
+  if (!req.user || !req.user.sub) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  console.log(req.user.sub)
+  // Compare the decoded user ID with the one sent in the request
+  if (req.user.sub !== userId) {
+    return res.status(403).json({ error: 'You are not authorized to access these projects' });
+  }
+
   try {
+        // Check if the project exists in the database
+    let { data: projectData, error: projectError } = await supabase
+      .from('projects') // Assuming you have a table called 'projects'
+      .select('project_id') // We only need the id to verify existence
+      .eq('project_id', project_id)
+      .eq('user_id', userId)
+      .single(); // .single() will return one row, or null if not found
+
+    console.log("projectData: ",projectData)
+    console.log("projectError: ", projectError)
+
+    if (projectError || !projectData) {
+      return res.status(404).json({ error: 'Project not found', success: false });
+    }
     
     const { data, error } = await supabase
       .from('apidocumentation')
-      .update({ openapi_schema: apiData })
+      .update({ 
+        openapi_schema: apiData,
+        api_Json: apiJson
+       })
       .eq('api_id', docId)
+      .eq('project_id', project_id)
       .select()
             
 
@@ -1059,7 +1088,7 @@ app.post('/api/v1/documentation/delete/test', async (req, res) => {
 });
 
 app.put('/api/v1/documentation/update/test', async (req, res) => {
-  const { docId, project_id, user_id, title, description, openapi_schema, url, input, output } = req.body;
+  const { docId, project_id, user_id, title, description, openapi_schema, url, input, output, api_Json } = req.body;
 
   console.log(docId, project_id, user_id);
 
@@ -1071,11 +1100,11 @@ app.put('/api/v1/documentation/update/test', async (req, res) => {
   try {
 
     // Validate the openapi_schema
-    if (!openapi_schema || Object.keys(openapi_schema).length === 0) {
+    if (!openapi_schema || !api_Json || Object.keys(openapi_schema).length === 0 || Object.keys(api_Json).length === 0) {
       return res.status(400).json({ error: 'No data provided' });
     }
 
-    const validationResult = await validateOpenApiSchema(openapi_schema);
+    const validationResult = await validateOpenApiSchema(api_Json);
     console.log(validationResult)
 
     if (!validationResult.valid) {
@@ -1086,7 +1115,7 @@ app.put('/api/v1/documentation/update/test', async (req, res) => {
     }
 
     // Convert the input openapi_schema to actual OpenAPI schema JSON object
-    const convertedData = await convertData(openapi_schema);
+    const convertedData = await convertData(api_Json);
     console.log(convertedData)
     const ans = await convertToFlattenedFormat(convertedData);
 
@@ -1139,7 +1168,8 @@ app.put('/api/v1/documentation/update/test', async (req, res) => {
         openapi_schema: ans,
         url: url,
         input: input,
-        output: output
+        output: output,
+        api_Json: api_Json
       })
       .eq('api_id', docId)
       .eq('project_id', project_id)
