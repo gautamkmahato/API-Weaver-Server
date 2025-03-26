@@ -467,7 +467,7 @@ app.post('/convert/openapi/test', async (req, res) => {
 
 // Example route to fetch data from Supabase
 app.get('/api/test', async (req, res) => {
-    
+    console.log("api test")
     try {
         
         let { data, error } = await supabase
