@@ -1510,6 +1510,10 @@ app.post('/api/v1/documentation/:docId/schema/playground', async (req, res) => {
   res.json(data);
 });
 
+app.get('/', (req, res) =>{
+  res.send('Hello World')
+})
+
 // Start the server
 const PORT = process.env.PORT || 8000;
 app.listen(PORT, async() => {
